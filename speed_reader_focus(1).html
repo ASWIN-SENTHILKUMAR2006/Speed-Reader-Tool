@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speed Reader — Focus Mode</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #000; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  #app { display: flex; flex-direction: column; width: 100%; max-width: 800px; min-height: 600px; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #222; }
+  #reader-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 340px; position: relative; padding: 2rem; }
+  #word-display { display: flex; align-items: center; justify-content: center; letter-spacing: 0.08em; line-height: 1; user-select: none; min-height: 1.2em; }
+  #word-display .norm { color: #e0e0e0; }
+  #word-display .focus { font-weight: 700; }
+  #progress-bar { width: 100%; height: 3px; background: #222; position: relative; }
+  #progress-fill { height: 100%; background: #555; transition: width 0.3s; width: 0%; }
+  #stats { display: flex; gap: 2rem; color: #666; font-size: 13px; margin-top: 1rem; }
+  #controls { background: #111; border-top: 1px solid #222; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 12px; }
+  .ctrl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ctrl-label { font-size: 12px; color: #888; min-width: 90px; }
+  .ctrl-val { font-size: 12px; color: #ccc; min-width: 38px; text-align: right; }
+  input[type=range] { flex: 1; accent-color: #fff; cursor: pointer; min-width: 80px; }
+  input[type=color] { width: 32px; height: 28px; border: 1px solid #444; border-radius: 4px; background: none; cursor: pointer; padding: 2px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn { background: #222; color: #ccc; border: 1px solid #333; border-radius: 6px; padding: 7px 18px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+  .btn:hover { background: #2a2a2a; }
+  .btn.active { background: #fff; color: #000; border-color: #fff; }
+  #upload-area { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; border: 1.5px dashed #333; border-radius: 8px; padding: 1.5rem; cursor: pointer; transition: border-color 0.2s; width: 100%; }
+  #upload-area:hover { border-color: #666; }
+  #upload-area input { display: none; }
+  #upload-area p { font-size: 13px; color: #888; }
+  #upload-area strong { font-size: 14px; color: #ccc; }
+  #word-count-info { font-size: 11px; color: #555; margin-top: 4px; }
+  #overlay-msg { position: absolute; font-size: 15px; color: #555; pointer-events: none; }
+  #sentence-ctx { font-size: 12px; color: #444; max-width: 500px; text-align: center; margin-top: 1rem; line-height: 1.6; min-height: 2.4em; }
+  #pause-icon { font-size: 28px; color: #333; display: none; }
+  textarea { flex: 1; min-width: 200px; height: 56px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 6px; padding: 8px; font-size: 13px; resize: none; font-family: inherit; }
+  h1 { font-size: 14px; color: #444; padding: 0.75rem 1.25rem 0; letter-spacing: 0.1em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Speed Reader — Focus Mode</h1>
+  <div id="reader-screen">
+    <span id="pause-icon">⏸</span>
+    <div id="word-display"><span id="overlay-msg">Upload a file or paste text to begin</span></div>
+    <div id="sentence-ctx"></div>
+    <div id="stats">
+      <span id="stat-wpm">— WPM</span>
+      <span id="stat-pos">—</span>
+      <span id="stat-time">— left</span>
+    </div>
+  </div>
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+  <div id="controls">
+    <div class="ctrl-row">
+      <div id="upload-area" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".txt,.pdf,.docx" onchange="handleFile(event)">
+        <strong>Upload file</strong>
+        <p>.txt · .pdf · .docx supported</p>
+      </div>
+    </div>
+    <div class="ctrl-row" style="gap:6px;flex-wrap:wrap;">
+      <textarea id="pasteText" placeholder="Or paste your text here..."></textarea>
+      <button class="btn" onclick="loadPasted()">Load text</button>
+    </div>
+    <div id="word-count-info"></div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Speed (WPM)</span>
+      <input type="range" id="wpmSlider" min="60" max="800" step="10" value="250" oninput="updateWPM(this.value)">
+      <span class="ctrl-val" id="wpmVal">250</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Font size</span>
+      <input type="range" id="fontSlider" min="24" max="96" step="2" value="52" oninput="updateFont(this.value)">
+      <span class="ctrl-val" id="fontVal">52px</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Focus letter</span>
+      <input type="range" id="focusSlider" min="1" max="5" step="1" value="1" oninput="updateFocusPos(this.value)">
+      <span class="ctrl-val" id="focusVal">1st</span>
+      <input type="color" id="focusColor" value="#ff3b30" oninput="updateColor(this.value)" title="Focus letter color">
+    </div>
+    <div class="btn-row">
+      <button class="btn active" id="playBtn" onclick="togglePlay()">▶ Play</button>
+      <button class="btn" onclick="restartReader()">↺ Restart</button>
+      <button class="btn" onclick="skipBack()">« Back 10</button>
+      <button class="btn" onclick="skipForward()">Forward 10 »</button>
+    </div>
+    <div style="font-size:11px;color:#444;margin-top:4px;">Keyboard: Space = play/pause · ← → = skip 10 words</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+let words = [], currentIndex = 0, wpm = 250, fontSize = 52, focusPos = 1, focusColor = '#ff3b30', isPlaying = false, timer = null;
+
+const wordDisplay = document.getElementById('word-display');
+const progressFill = document.getElementById('progress-fill');
+const statWpm = document.getElementById('stat-wpm');
+const statPos = document.getElementById('stat-pos');
+const statTime = document.getElementById('stat-time');
+const sentenceCtx = document.getElementById('sentence-ctx');
+const pauseIcon = document.getElementById('pause-icon');
+const overlayMsg = document.getElementById('overlay-msg');
+const wordCountInfo = document.getElementById('word-count-info');
+const playBtn = document.getElementById('playBtn');
+
+function updateWPM(v) { wpm = parseInt(v); document.getElementById('wpmVal').textContent = v; if (isPlaying) { clearInterval(timer); startInterval(); } }
+function updateFont(v) { fontSize = parseInt(v); document.getElementById('fontVal').textContent = v + 'px'; renderWord(); }
+function updateColor(v) { focusColor = v; renderWord(); }
+function updateFocusPos(v) { focusPos = parseInt(v); const labels = ['1st','2nd','3rd','4th','5th']; document.getElementById('focusVal').textContent = labels[focusPos-1]; renderWord(); }
+
+function getFocusIndex(word) { return Math.min(focusPos - 1, word.length - 1); }
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderWord(idx) {
+  if (idx === undefined) idx = currentIndex;
+  if (!words.length) return;
+  const word = words[idx] || '';
+  const fi = getFocusIndex(word);
+  const before = word.slice(0, fi), focus = word[fi] || '', after = word.slice(fi + 1);
+  wordDisplay.innerHTML = `<span class="norm" style="font-size:${fontSize}px">${escHtml(before)}</span><span class="focus" style="font-size:${fontSize}px;color:${focusColor}">${escHtml(focus)}</span><span class="norm" style="font-size:${fontSize}px">${escHtml(after)}</span>`;
+  overlayMsg.style.display = 'none'; pauseIcon.style.display = 'none';
+  const pct = words.length > 1 ? (idx / (words.length - 1)) * 100 : 100;
+  progressFill.style.width = pct.toFixed(1) + '%';
+  statWpm.textContent = wpm + ' WPM';
+  statPos.textContent = (idx + 1) + ' / ' + words.length;
+  const secsLeft = Math.round((words.length - idx - 1) / wpm * 60);
+  statTime.textContent = formatTime(secsLeft) + ' left';
+  const start = Math.max(0, idx - 5), end = Math.min(words.length - 1, idx + 10);
+  sentenceCtx.innerHTML = words.slice(start, end + 1).map((w, i) => `<span style="color:${start+i===idx?'#aaa':'#333'}">${escHtml(w)}</span>`).join(' ');
+}
+
+function formatTime(secs) { return secs < 60 ? secs + 's' : Math.floor(secs/60) + 'm ' + (secs%60) + 's'; }
+
+function startInterval() {
+  const delay = Math.round(60000 / wpm);
+  timer = setInterval(() => {
+    if (currentIndex >= words.length - 1) { clearInterval(timer); isPlaying = false; playBtn.textContent = '▶ Play'; playBtn.classList.add('active'); return; }
+    currentIndex++; renderWord(currentIndex);
+  }, delay);
+}
+
+function togglePlay() {
+  if (!words.length) return;
+  if (isPlaying) { clearInterval(timer); isPlaying = false; playBtn.textContent = '▶ Play'; playBtn.classList.add('active'); pauseIcon.style.display = 'block'; }
+  else { if (currentIndex >= words.length - 1) currentIndex = 0; isPlaying = true; playBtn.textContent = '⏸ Pause'; playBtn.classList.remove('active'); pauseIcon.style.display = 'none'; renderWord(currentIndex); startInterval(); }
+}
+
+function restartReader() { clearInterval(timer); isPlaying = false; currentIndex = 0; playBtn.textContent = '▶ Play'; playBtn.classList.add('active'); if (words.length) renderWord(0); }
+function skipBack() { currentIndex = Math.max(0, currentIndex - 10); renderWord(currentIndex); }
+function skipForward() { currentIndex = Math.min(words.length - 1, currentIndex + 10); renderWord(currentIndex); }
+
+function loadWords(text) {
+  words = text.trim().split(/\s+/).filter(w => w.length > 0);
+  currentIndex = 0; isPlaying = false; clearInterval(timer);
+  playBtn.textContent = '▶ Play'; playBtn.classList.add('active');
+  wordCountInfo.textContent = words.length + ' words · ~' + Math.round(words.length / 200) + ' min at 200 WPM';
+  if (words.length) renderWord(0);
+}
+
+function loadPasted() { const t = document.getElementById('pasteText').value.trim(); if (t) loadWords(t); }
+
+async function handleFile(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  wordCountInfo.textContent = 'Reading file...';
+  try {
+    if (ext === 'txt') { loadWords(await file.text()); }
+    else if (ext === 'pdf') { await readPDF(file); }
+    else if (ext === 'docx') { await readDocx(file); }
+  } catch(e) { wordCountInfo.textContent = 'Error reading file. Try pasting text instead.'; }
+}
+
+async function readPDF(file) {
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) { const page = await pdf.getPage(i); const content = await page.getTextContent(); fullText += content.items.map(item => item.str).join(' ') + ' '; }
+  loadWords(fullText);
+}
+
+async function readDocx(file) {
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const xmlStr = await zip.file('word/document.xml').async('text');
+  const doc = new DOMParser().parseFromString(xmlStr, 'application/xml');
+  loadWords(Array.from(doc.querySelectorAll('t')).map(el => el.textContent).join(' '));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowLeft') skipBack();
+  if (e.code === 'ArrowRight') skipForward();
+});
+</script>
+</body>
+</html>

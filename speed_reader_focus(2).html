@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speed Reader — Focus Mode</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 1rem; }
+#app { display: flex; flex-direction: column; width: 100%; max-width: 860px; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #1e1e1e; }
+
+/* READER SCREEN */
+#reader-screen { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; padding: 2.5rem 2rem 1.5rem; background: #000; }
+#reader-screen.fs { position: fixed; inset: 0; z-index: 9999; border-radius: 0; min-height: 100vh; background: #000; }
+#fs-btn { position: absolute; top: 12px; right: 12px; background: #161616; border: 1px solid #252525; color: #555; border-radius: 6px; padding: 5px 11px; font-size: 12px; cursor: pointer; z-index: 10; }
+#fs-btn:hover { color: #aaa; border-color: #444; }
+#fs-hint { display: none; position: absolute; bottom: 14px; font-size: 11px; color: #2a2a2a; }
+#reader-screen.fs #fs-hint { display: block; }
+#word-display { display: flex; align-items: center; justify-content: center; letter-spacing: 0.08em; user-select: none; min-height: 1.2em; }
+#word-display .norm { color: #ddd; }
+#word-display .focus { font-weight: 700; }
+#sentence-ctx { font-size: 12px; color: #2e2e2e; max-width: 500px; text-align: center; margin-top: 1rem; line-height: 1.7; min-height: 2.4em; }
+#sentence-ctx .sc-cur { color: #777; }
+#stats { display: flex; gap: 2rem; color: #444; font-size: 12px; margin-top: 0.75rem; }
+#pause-icon { font-size: 26px; color: #1e1e1e; display: none; }
+#overlay-msg { font-size: 15px; color: #3a3a3a; }
+
+/* PROGRESS */
+#progress-bar { width: 100%; height: 3px; background: #141414; }
+#progress-fill { height: 100%; background: #3a3a3a; transition: width 0.25s; width: 0%; }
+
+/* CONTROLS */
+#controls { background: #0a0a0a; border-top: 1px solid #181818; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 10px; }
+.ctrl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ctrl-label { font-size: 12px; color: #666; min-width: 90px; }
+.ctrl-val { font-size: 12px; color: #aaa; min-width: 38px; text-align: right; }
+input[type=range] { flex: 1; accent-color: #fff; cursor: pointer; min-width: 80px; }
+input[type=color] { width: 32px; height: 27px; border: 1px solid #2a2a2a; border-radius: 4px; background: none; cursor: pointer; padding: 2px; }
+.btn-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.btn { background: #141414; color: #aaa; border: 1px solid #222; border-radius: 6px; padding: 6px 15px; font-size: 12px; cursor: pointer; transition: background 0.12s; }
+.btn:hover { background: #1e1e1e; }
+.btn.on { background: #fff; color: #000; border-color: #fff; }
+#upload-area { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; border: 1.5px dashed #222; border-radius: 8px; padding: 1.1rem; cursor: pointer; width: 100%; }
+#upload-area:hover { border-color: #444; }
+#upload-area input { display: none; }
+#upload-area p { font-size: 12px; color: #555; }
+#upload-area strong { font-size: 13px; color: #aaa; }
+#wci { font-size: 11px; color: #383838; }
+textarea { flex: 1; min-width: 200px; height: 50px; background: #111; border: 1px solid #222; color: #aaa; border-radius: 6px; padding: 7px; font-size: 12px; resize: none; font-family: inherit; }
+.sec { font-size: 10px; color: #2a2a2a; letter-spacing: 0.12em; text-transform: uppercase; padding-bottom: 3px; border-bottom: 1px solid #161616; margin-top: 2px; }
+
+/* BOOK PANEL */
+#book-panel { background: #080808; border-top: 1px solid #181818; padding: 1rem 1.25rem 1.5rem; }
+#book-wrap { display: flex; gap: 18px; align-items: flex-start; margin-top: 10px; }
+
+/* Book visual */
+#book-visual { position: relative; width: 200px; min-width: 200px; height: 290px; flex-shrink: 0; cursor: default; }
+#book-cover { position: absolute; inset: 0; background: linear-gradient(145deg,#1c1008 0%,#2e1a0a 50%,#1a0e06 100%); border-radius: 2px 8px 8px 2px; border: 1px solid #3a2010; box-shadow: -5px 2px 0 #060302, inset -3px 0 8px rgba(0,0,0,0.7); }
+#book-spine { position: absolute; left: 0; top: 0; bottom: 0; width: 16px; background: linear-gradient(180deg,#0e0805,#180d05,#0e0805); border-radius: 2px 0 0 2px; border-right: 1px solid #2a1306; }
+#book-title-el { position: absolute; left: 24px; right: 8px; top: 16px; font-size: 10px; color: #7a5030; letter-spacing: 0.06em; text-align: center; font-style: italic; line-height: 1.6; word-break: break-word; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+#book-ornament-top { position: absolute; left: 24px; right: 8px; top: 52px; height: 1px; background: linear-gradient(90deg,transparent,#5a3018,transparent); }
+#book-ornament-bot { position: absolute; left: 24px; right: 8px; bottom: 46px; height: 1px; background: linear-gradient(90deg,transparent,#5a3018,transparent); }
+#book-lines { position: absolute; left: 24px; right: 8px; top: 60px; bottom: 54px; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
+.bl { border-radius: 1px; height: 2.5px; background: #1c0e06; transition: background 0.2s; }
+.bl.past { background: #2e1a08; }
+.bl.cur { background: #c0702a; box-shadow: 0 0 4px rgba(200,100,30,0.4); }
+
+/* Bookmark */
+#bookmark { position: absolute; right: 14px; top: 0; width: 24px; z-index: 20; cursor: grab; user-select: none; touch-action: none; }
+#bookmark:active { cursor: grabbing; }
+#bookmark svg { width: 24px; display: block; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.9)); }
+#bm-tip { position: absolute; right: 30px; top: 6px; background: #180e06; border: 1px solid #6a3818; color: #c8824a; font-size: 11px; padding: 4px 9px; border-radius: 4px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+#bookmark:hover #bm-tip { opacity: 1; }
+
+/* Book text */
+#book-text-area { flex: 1; min-width: 0; }
+#bta-title { font-size: 10px; color: #2e2e2e; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; }
+#book-scroll { height: 280px; overflow: hidden; position: relative; }
+#book-text { font-size: 13px; color: #444; line-height: 1.9; font-family: Georgia, serif; position: absolute; top: 0; left: 0; right: 0; transition: top 0.35s ease; }
+#book-text .bw { display: inline; cursor: pointer; border-radius: 2px; padding: 0 1px; transition: color 0.1s, background 0.1s; }
+#book-text .bw:hover { background: #1e1006; color: #c07840; }
+#book-text .bw.cur { background: #2a1408; color: #e09050; }
+#book-scroll::after { content:''; position:absolute; bottom:0; left:0; right:0; height:52px; background:linear-gradient(transparent,#080808); pointer-events:none; }
+#book-scroll::before { content:''; position:absolute; top:0; left:0; right:0; height:28px; background:linear-gradient(#080808,transparent); pointer-events:none; z-index:1; }
+#book-empty-msg { font-size: 12px; color: #252525; font-style: italic; text-align: center; padding-top: 4rem; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="reader-screen">
+    <button id="fs-btn" onclick="toggleFS()">⛶ Fullscreen</button>
+    <span id="pause-icon">⏸</span>
+    <div id="word-display"><span id="overlay-msg">Upload a file or paste text to begin</span></div>
+    <div id="sentence-ctx"></div>
+    <div id="stats">
+      <span id="stat-wpm">— WPM</span>
+      <span id="stat-pos">—</span>
+      <span id="stat-time">— left</span>
+    </div>
+    <span id="fs-hint">Press F or Esc to exit fullscreen</span>
+  </div>
+
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+
+  <div id="controls">
+    <div class="sec">Load content</div>
+    <div class="ctrl-row">
+      <div id="upload-area" onclick="document.getElementById('fi').click()">
+        <input type="file" id="fi" accept=".txt,.pdf,.docx" onchange="handleFile(event)">
+        <strong>Upload file</strong>
+        <p>.txt · .pdf · .docx supported</p>
+      </div>
+    </div>
+    <div class="ctrl-row" style="gap:6px;">
+      <textarea id="pasteText" placeholder="Or paste your text here..."></textarea>
+      <button class="btn" onclick="loadPasted()">Load</button>
+    </div>
+    <div id="wci"></div>
+    <div class="sec">Reading controls</div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Speed (WPM)</span>
+      <input type="range" id="wpmS" min="60" max="800" step="10" value="250" oninput="setWPM(this.value)">
+      <span class="ctrl-val" id="wpmV">250</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Font size</span>
+      <input type="range" id="fontS" min="24" max="96" step="2" value="52" oninput="setFont(this.value)">
+      <span class="ctrl-val" id="fontV">52px</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Focus letter</span>
+      <input type="range" id="focusS" min="1" max="5" step="1" value="1" oninput="setFocus(this.value)">
+      <span class="ctrl-val" id="focusV">1st</span>
+      <input type="color" id="focusC" value="#ff3b30" oninput="setColor(this.value)">
+    </div>
+    <div class="btn-row">
+      <button class="btn on" id="playBtn" onclick="togglePlay()">▶ Play</button>
+      <button class="btn" onclick="restartReader()">↺ Restart</button>
+      <button class="btn" onclick="skipBack()">« Back 10</button>
+      <button class="btn" onclick="skipFwd()">Forward 10 »</button>
+    </div>
+    <div style="font-size:11px;color:#282828;margin-top:2px;">Keyboard: Space = play/pause · ← → = skip · F = fullscreen</div>
+  </div>
+
+  <div id="book-panel">
+    <div class="sec">Book view — drag the bookmark or click any word to jump</div>
+    <div id="book-wrap">
+      <div id="book-visual">
+        <div id="book-cover"></div>
+        <div id="book-spine"></div>
+        <div id="book-title-el">No file loaded</div>
+        <div id="book-ornament-top"></div>
+        <div id="book-ornament-bot"></div>
+        <div id="book-lines"></div>
+        <div id="bookmark">
+          <svg viewBox="0 0 24 48" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="0,0 24,0 24,48 12,38 0,48" fill="#c0392b"/>
+            <polygon points="0,0 24,0 24,4 0,4" fill="#e74c3c"/>
+            <line x1="6" y1="14" x2="18" y2="14" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+            <line x1="6" y1="20" x2="18" y2="20" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+            <line x1="6" y1="26" x2="15" y2="26" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          </svg>
+          <div id="bm-tip">Drag to jump · click to set start</div>
+        </div>
+      </div>
+
+      <div id="book-text-area">
+        <div id="bta-title">Text preview — click any word to jump</div>
+        <div id="book-scroll">
+          <div id="book-text"><div id="book-empty-msg">Load a file to see text here</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+let words=[], ci=0, wpm=250, fs=52, fp=1, fc='#ff3b30', playing=false, tmr=null, bmIdx=0;
+const NLINES=38;
+const WD=document.getElementById('word-display'), PF=document.getElementById('progress-fill');
+const SW=document.getElementById('stat-wpm'), SP=document.getElementById('stat-pos'), ST=document.getElementById('stat-time');
+const SC=document.getElementById('sentence-ctx'), PI=document.getElementById('pause-icon');
+const OM=document.getElementById('overlay-msg'), WCI=document.getElementById('wci');
+const PB=document.getElementById('playBtn'), RS=document.getElementById('reader-screen');
+const BL=document.getElementById('book-lines'), BT=document.getElementById('book-text');
+const BM=document.getElementById('bookmark'), BTE=document.getElementById('book-title-el');
+const BV=document.getElementById('book-visual'), BMTIP=document.getElementById('bm-tip');
+
+function toggleFS(){
+  RS.classList.toggle('fs');
+  document.getElementById('fs-btn').textContent=RS.classList.contains('fs')?'✕ Exit':'⛶ Fullscreen';
+}
+function setWPM(v){wpm=+v;document.getElementById('wpmV').textContent=v;if(playing){clearInterval(tmr);startTmr();}}
+function setFont(v){fs=+v;document.getElementById('fontV').textContent=v+'px';renderW();}
+function setColor(v){fc=v;renderW();}
+function setFocus(v){fp=+v;document.getElementById('focusV').textContent=['1st','2nd','3rd','4th','5th'][fp-1];renderW();}
+function fi2(w){return Math.min(fp-1,w.length-1);}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtT(s){return s<60?s+'s':Math.floor(s/60)+'m '+(s%60)+'s';}
+
+function renderW(idx){
+  if(idx===undefined)idx=ci;
+  if(!words.length)return;
+  const w=words[idx]||'',fi=fi2(w),b=w.slice(0,fi),f=w[fi]||'',a=w.slice(fi+1);
+  WD.innerHTML=`<span class="norm" style="font-size:${fs}px">${esc(b)}</span><span class="focus" style="font-size:${fs}px;color:${fc}">${esc(f)}</span><span class="norm" style="font-size:${fs}px">${esc(a)}</span>`;
+  OM.style.display='none';PI.style.display='none';
+  const pct=words.length>1?idx/(words.length-1)*100:100;
+  PF.style.width=pct.toFixed(1)+'%';
+  SW.textContent=wpm+' WPM';SP.textContent=(idx+1)+' / '+words.length;
+  ST.textContent=fmtT(Math.round((words.length-idx-1)/wpm*60))+' left';
+  const s=Math.max(0,idx-5),e=Math.min(words.length-1,idx+10);
+  SC.innerHTML=words.slice(s,e+1).map((x,i)=>`<span${s+i===idx?' class="sc-cur"':''}>${esc(x)}</span>`).join(' ');
+  updateLines(idx);syncBookText(idx);
+  if(!isDragging)positionBM(idx);
+}
+
+function startTmr(){
+  const d=Math.round(60000/wpm);
+  tmr=setInterval(()=>{
+    if(ci>=words.length-1){clearInterval(tmr);playing=false;PB.textContent='▶ Play';PB.classList.add('on');return;}
+    ci++;renderW(ci);
+  },d);
+}
+function togglePlay(){
+  if(!words.length)return;
+  if(playing){clearInterval(tmr);playing=false;PB.textContent='▶ Play';PB.classList.add('on');PI.style.display='block';}
+  else{if(ci>=words.length-1)ci=0;playing=true;PB.textContent='⏸ Pause';PB.classList.remove('on');PI.style.display='none';renderW(ci);startTmr();}
+}
+function restartReader(){clearInterval(tmr);playing=false;ci=0;PB.textContent='▶ Play';PB.classList.add('on');if(words.length)renderW(0);}
+function skipBack(){ci=Math.max(0,ci-10);renderW(ci);}
+function skipFwd(){ci=Math.min(words.length-1,ci+10);renderW(ci);}
+
+function loadWords(txt,fname){
+  words=txt.trim().split(/\s+/).filter(x=>x.length>0);
+  ci=0;bmIdx=0;playing=false;clearInterval(tmr);
+  PB.textContent='▶ Play';PB.classList.add('on');
+  WCI.textContent=words.length+' words · ~'+Math.round(words.length/200)+' min at 200 WPM';
+  BTE.textContent=fname||'Untitled';
+  buildLines();buildBookWords();positionBM(0);
+  if(words.length)renderW(0);
+}
+function loadPasted(){const t=document.getElementById('pasteText').value.trim();if(t)loadWords(t,'Pasted text');}
+
+async function handleFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  WCI.textContent='Reading file...';
+  try{
+    if(ext==='txt')loadWords(await file.text(),file.name);
+    else if(ext==='pdf')await readPDF(file);
+    else if(ext==='docx')await readDocx(file);
+  }catch(err){WCI.textContent='Error reading file. Try pasting text instead.';}
+}
+async function readPDF(file){
+  const lib=window['pdfjs-dist/build/pdf'];
+  lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await lib.getDocument({data:await file.arrayBuffer()}).promise;
+  let txt='';
+  for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const c=await pg.getTextContent();txt+=c.items.map(x=>x.str).join(' ')+' ';}
+  loadWords(txt,file.name);
+}
+async function readDocx(file){
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const xml=await zip.file('word/document.xml').async('text');
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  loadWords(Array.from(doc.querySelectorAll('t')).map(el=>el.textContent).join(' '),file.name);
+}
+
+// BOOK LINES
+function buildLines(){
+  BL.innerHTML='';
+  for(let i=0;i<NLINES;i++){
+    const d=document.createElement('div');d.className='bl';
+    const w=Math.max(22,Math.min(98,(55+Math.sin(i*1.7)*22+(i%4===0?-12:0)+(i%7===0?8:0))));
+    d.style.width=w+'%';BL.appendChild(d);
+  }
+}
+function updateLines(idx){
+  const lines=BL.querySelectorAll('.bl');if(!lines.length||!words.length)return;
+  const pct=idx/(words.length-1||1);
+  const cur=Math.floor(pct*(NLINES-1));
+  lines.forEach((l,i)=>{l.className='bl';if(i===cur)l.classList.add('cur');else if(i<cur)l.classList.add('past');});
+}
+
+// BOOK TEXT
+function buildBookWords(){
+  if(!words.length){BT.innerHTML='<div id="book-empty-msg">Load a file to see text here</div>';return;}
+  BT.innerHTML=words.map((w,i)=>`<span class="bw" data-i="${i}" onclick="jumpTo(${i})">${esc(w)} </span>`).join('');
+}
+function syncBookText(idx){
+  if(!words.length)return;
+  const scroll=document.getElementById('book-scroll');
+  const all=BT.querySelectorAll('.bw');if(!all.length)return;
+  const el=all[idx];if(!el)return;
+  const targetTop=el.offsetTop;
+  const h=scroll.offsetHeight;
+  BT.style.top=Math.max(0,targetTop-h/2)* -1+'px';
+}
+function highlightBW(idx){
+  BT.querySelectorAll('.bw').forEach((w,i)=>w.classList.toggle('cur',i===idx));
+}
+function jumpTo(idx){
+  ci=idx;bmIdx=idx;positionBM(idx);renderW(idx);
+  if(!playing){playing=true;PB.textContent='⏸ Pause';PB.classList.remove('on');PI.style.display='none';startTmr();}
+}
+
+// Also sync highlight separately to avoid redundancy
+const origRenderW=renderW;
+function renderW(idx){
+  if(idx===undefined)idx=ci;
+  if(!words.length)return;
+  const w=words[idx]||'',fi=fi2(w),b=w.slice(0,fi),f=w[fi]||'',a=w.slice(fi+1);
+  WD.innerHTML=`<span class="norm" style="font-size:${fs}px">${esc(b)}</span><span class="focus" style="font-size:${fs}px;color:${fc}">${esc(f)}</span><span class="norm" style="font-size:${fs}px">${esc(a)}</span>`;
+  OM.style.display='none';PI.style.display='none';
+  const pct=words.length>1?idx/(words.length-1)*100:100;
+  PF.style.width=pct.toFixed(1)+'%';
+  SW.textContent=wpm+' WPM';SP.textContent=(idx+1)+' / '+words.length;
+  ST.textContent=fmtT(Math.round((words.length-idx-1)/wpm*60))+' left';
+  const s=Math.max(0,idx-5),e=Math.min(words.length-1,idx+10);
+  SC.innerHTML=words.slice(s,e+1).map((x,i)=>`<span${s+i===idx?' class="sc-cur"':''}>${esc(x)}</span>`).join(' ');
+  updateLines(idx);syncBookText(idx);highlightBW(idx);
+  if(!isDragging)positionBM(idx);
+}
+
+// BOOKMARK DRAG
+let isDragging=false,dragStartY=0,dragStartTop=0;
+
+function positionBM(idx){
+  if(!words.length){BM.style.top='0px';return;}
+  const pct=idx/Math.max(1,words.length-1);
+  const max=BV.offsetHeight-48;
+  BM.style.top=Math.round(pct*max)+'px';
+}
+
+BM.addEventListener('mousedown',e=>{
+  isDragging=true;dragStartY=e.clientY;
+  dragStartTop=parseInt(BM.style.top)||0;
+  e.preventDefault();
+});
+document.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  const max=BV.offsetHeight-48;
+  let t=Math.max(0,Math.min(max,dragStartTop+(e.clientY-dragStartY)));
+  BM.style.top=t+'px';
+  const pct=t/max;
+  bmIdx=Math.round(pct*(words.length-1));
+  updateLines(bmIdx);syncBookText(bmIdx);highlightBW(bmIdx);
+  BMTIP.textContent='Word '+(bmIdx+1)+' of '+words.length;
+});
+document.addEventListener('mouseup',()=>{
+  if(!isDragging)return;isDragging=false;
+  if(words.length){ci=bmIdx;renderW(ci);}
+});
+
+BM.addEventListener('touchstart',e=>{
+  isDragging=true;dragStartY=e.touches[0].clientY;
+  dragStartTop=parseInt(BM.style.top)||0;
+  e.preventDefault();
+},{passive:false});
+document.addEventListener('touchmove',e=>{
+  if(!isDragging)return;
+  const max=BV.offsetHeight-48;
+  let t=Math.max(0,Math.min(max,dragStartTop+(e.touches[0].clientY-dragStartY)));
+  BM.style.top=t+'px';
+  const pct=t/max;bmIdx=Math.round(pct*(words.length-1));
+  updateLines(bmIdx);syncBookText(bmIdx);highlightBW(bmIdx);
+},{passive:true});
+document.addEventListener('touchend',()=>{
+  if(!isDragging)return;isDragging=false;
+  if(words.length){ci=bmIdx;renderW(ci);}
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='TEXTAREA')return;
+  if(e.code==='Space'){e.preventDefault();togglePlay();}
+  if(e.code==='ArrowLeft'){e.preventDefault();skipBack();}
+  if(e.code==='ArrowRight'){e.preventDefault();skipFwd();}
+  if(e.code==='KeyF')toggleFS();
+  if(e.code==='Escape'&&RS.classList.contains('fs'))toggleFS();
+});
+
+buildLines();
+</script>
+</body>
+</html>
