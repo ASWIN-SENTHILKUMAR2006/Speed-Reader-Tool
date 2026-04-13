@@ -1,5 +1,7 @@
 # ⚡ Focus Reader
 
+# Visit 😁 : https://fastreader.triospark.in/
+
 A browser-based speed reading tool built for personal use — no frameworks, no dependencies, no installs. Just open the HTML file and read.
 
 Built because I wanted a distraction-free way to get through books and documents faster. Ended up being a solid little project.
